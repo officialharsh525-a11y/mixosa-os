@@ -1,0 +1,13 @@
+FROM archlinux:latest
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Archiso needs pacman, mkarchiso, and a current keyring. The build container
+# is intentionally small; the target packages are defined by live_build.
+RUN sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/ s/^#//' /etc/pacman.conf \
+    && pacman -Sy --noconfirm archlinux-keyring \
+    && pacman -Syu --noconfirm --needed archiso \
+    && pacman -Scc --noconfirm
+
+WORKDIR /workspace
+ENTRYPOINT ["/usr/bin/env"]

@@ -1,0 +1,59 @@
+# Base live system
+base
+base-devel
+linux-zen
+linux-zen-headers
+linux-firmware
+mkinitcpio
+sudo
+
+# Desktop and display manager
+plasma-desktop
+plasma-workspace
+plasma-nm
+sddm
+xorg-server
+wayland
+xdg-user-dirs
+xdg-utils
+polkit-kde-agent
+xdg-desktop-portal-kde
+
+# Desktop applications and audio
+ark
+dolphin
+firefox
+konsole
+kate
+pipewire
+pipewire-pulse
+wireplumber
+pavucontrol
+
+# Networking and ecosystem integration
+networkmanager
+kdeconnect
+samba
+flatpak
+openssh
+
+# Windows compatibility
+wine
+winetricks
+mesa
+lib32-mesa
+vulkan-icd-loader
+lib32-vulkan-icd-loader
+
+# Build and setup utilities
+curl
+wget
+git
+unzip
+rsync
+noto-fonts
+noto-fonts-emoji
+
+# Firmware / VM friendliness
+virtualbox-guest-utils
+xf86-video-vmware
