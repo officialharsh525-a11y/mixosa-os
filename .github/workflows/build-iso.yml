@@ -17,7 +17,7 @@ jobs:
         run: |
           docker build -t mixosa-builder -f Dockerfile.archiso .
           mkdir -p build
-          docker run --rm --privileged -v $(pwd):/workspace mixosa-builder sudo mkarchiso -v -w /workspace/live_build/work -o /workspace/build/ /workspace/live_build/
+          docker run --rm --privileged -v $(pwd):/workspace mixosa-builder mkarchiso -v -w /workspace/work -o /workspace/build/ /workspace/live_build/
 
       - name: Upload ISO Artifact
         uses: actions/upload-artifact@v4
