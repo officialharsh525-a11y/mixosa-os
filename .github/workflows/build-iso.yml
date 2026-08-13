@@ -13,8 +13,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-- name: Build ISO using Docker
+      - name: Build ISO using Docker
         run: |
           docker build -t mixosa-builder -f Dockerfile.archiso .
           mkdir -p build
-          docker run --rm --privileged -v $(pwd):/workspace mixosa-builder mkarchiso -v -w /workspace/work -o /workspace/build/ /workspace/live_build
+          docker run --rm --privileged -v $(pwd):/workspace mixosa-builder mkarchiso -v -w /workspace/work -o /workspace/build/ /workspace/live_build/
+
+      - name: Upload ISO Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mixosa-iso
+          path: build/*.iso
