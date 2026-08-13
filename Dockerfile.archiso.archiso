@@ -1,0 +1,9 @@
+FROM archlinux:latest
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+RUN pacman -Syu --noconfirm --needed archiso \
+    && pacman -Scc --noconfirm
+
+WORKDIR /workspace
