@@ -1,0 +1,26 @@
+name: Build Mixosa OS ISO
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build ISO using Docker
+        run: |
+          docker build -t mixosa-builder -f Dockerfile.archiso .
+          mkdir -p build
+          docker run --rm --privileged -v $(pwd):/workspace mixosa-builder sudo mkarchiso -v -w /workspace/live_build/work -o /workspace/build/ /workspace/live_build/
+
+      - name: Upload ISO Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mixosa-iso
+          path: build/*.iso
