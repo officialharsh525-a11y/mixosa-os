@@ -1,13 +1,21 @@
 FROM archlinux:latest
 
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# Archiso needs pacman, mkarchiso, and a current keyring. The build container
-# is intentionally small; the target packages are defined by live_build.
-RUN sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/ s/^#//' /etc/pacman.conf \
-    && pacman -Sy --noconfirm archlinux-keyring \
-    && pacman -Syu --noconfirm --needed archiso \
+# Refresh keyring first so signature checks on the packages below don't fail
+# on a stale/base image, then update databases and install the build
+# toolchain. No non-root user is created here on purpose: the container
+# runs as root by default, so 'mkarchiso' can be invoked directly without
+# 'sudo' anywhere in the pipeline.
+RUN pacman -Sy --noconfirm --needed archlinux-keyring && \
+    pacman -Syu --noconfirm && \
+    pacman -S --noconfirm --needed \
+        archiso \
+        git \
+        bash \
+        dosfstools \
+        squashfs-tools \
+        libisoburn \
+        mtools \
+        e2fsprogs \
     && pacman -Scc --noconfirm
 
 WORKDIR /workspace
-ENTRYPOINT ["/usr/bin/env"]

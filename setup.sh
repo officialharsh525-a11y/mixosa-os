@@ -1,72 +1,162 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+#
+# setup.sh - Master bootstrap script for Mixosa OS.
+#
+# Creates the live_build/ directory tree (if missing) and writes every file
+# mkarchiso needs into its correct relative path. Safe to re-run: existing
+# files it manages are overwritten, but it never deletes anything it didn't
+# create.
+#
+# Intended to run INSIDE the mixosa-builder container (see
+# Dockerfile.archiso), as root, with no 'sudo' required.
 
-if (( EUID != 0 )); then
-  echo "Run this script with sudo or as root."
-  exit 1
-fi
+set -euo pipefail
 
-log() { printf '[mixosa-setup] %s\n' "$*"; }
-warn() { printf '[mixosa-setup] WARNING: %s\n' "$*" >&2; }
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIVE_BUILD_DIR="${REPO_ROOT}/live_build"
+RELENG_DIR="/usr/share/archiso/configs/releng"
 
-# Prefer the invoking desktop user. If the script is run directly as root,
-# use the first regular local account when one exists.
-TARGET_USER="${SUDO_USER:-}"
-if [[ -z "$TARGET_USER" || "$TARGET_USER" == root ]]; then
-  TARGET_USER="$(awk -F: '$3 >= 1000 && $3 < 60000 {print $1; exit}' /etc/passwd || true)"
-fi
-TARGET_HOME=""
-if [[ -n "$TARGET_USER" ]]; then
-  TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
-fi
+echo "==> Mixosa OS build environment setup"
+echo "==> Repo root:   ${REPO_ROOT}"
+echo "==> live_build:  ${LIVE_BUILD_DIR}"
 
-export DEBIAN_FRONTEND=noninteractive
-log "Refreshing Arch package databases."
-pacman -Syu --noconfirm
+mkdir -p "${LIVE_BUILD_DIR}"
 
-log "Installing Mixosa runtime dependencies."
-pacman -S --needed --noconfirm \
-  base-devel git curl wget unzip flatpak mesa \
-  linux-zen linux-zen-headers \
-  wine winetricks samba \
-  networkmanager kdeconnect
-
-systemctl enable NetworkManager.service 2>/dev/null || true
-systemctl enable smb.service 2>/dev/null || true
-systemctl enable nmb.service 2>/dev/null || true
-
-if [[ -n "$TARGET_USER" ]]; then
-  log "Configuring Flatpak applications for $TARGET_USER."
-  flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || warn "Could not add Flathub."
-  runuser -u "$TARGET_USER" -- flatpak install --user --assumeyes flathub \
-    com.usebottles.bottles org.localsend.localsend_app \
-    || warn "Bottles or LocalSend could not be installed; rerun after networking is available."
-
-  if ! runuser -u "$TARGET_USER" -- bash -lc 'command -v yay >/dev/null 2>&1'; then
-    log "Building yay for $TARGET_USER."
-    tmpdir="$(mktemp -d)"
-    chown "$TARGET_USER":"$TARGET_USER" "$tmpdir"
-    runuser -u "$TARGET_USER" -- git clone --depth=1 https://aur.archlinux.org/yay.git "$tmpdir/yay"
-    runuser -u "$TARGET_USER" -- bash -lc "cd '$tmpdir/yay' && makepkg -si --noconfirm"
-    rm -rf "$tmpdir"
-  fi
-
-  theme_dir="$TARGET_HOME/.local/share"
-  runuser -u "$TARGET_USER" -- mkdir -p "$theme_dir"
-  if [[ ! -d "$theme_dir/WhiteSur-gtk-theme" ]]; then
-    runuser -u "$TARGET_USER" -- git clone --depth=1 \
-      https://github.com/vinceliuice/WhiteSur-gtk-theme.git "$theme_dir/WhiteSur-gtk-theme"
-    runuser -u "$TARGET_USER" -- bash -lc "cd '$theme_dir/WhiteSur-gtk-theme' && ./install.sh -c dark -s 2k" \
-      || warn "WhiteSur GTK theme installation failed."
-  fi
-  if [[ ! -d "$theme_dir/WhiteSur-icon-theme" ]]; then
-    runuser -u "$TARGET_USER" -- git clone --depth=1 \
-      https://github.com/vinceliuice/WhiteSur-icon-theme.git "$theme_dir/WhiteSur-icon-theme"
-    runuser -u "$TARGET_USER" -- bash -lc "cd '$theme_dir/WhiteSur-icon-theme' && ./install.sh" \
-      || warn "WhiteSur icon theme installation failed."
-  fi
+# ---------------------------------------------------------------------------
+# 1. Boot-loader templates (syslinux for BIOS, efiboot for UEFI/systemd-boot)
+#    mkarchiso needs these directories to exist with valid config files in
+#    order to satisfy the bootmodes declared in profiledef.sh. Rather than
+#    hand-maintain low-level syslinux/systemd-boot templates, seed them from
+#    the archiso package's own reference "releng" profile, which ships
+#    inside the archlinux archiso package installed by Dockerfile.archiso.
+#    If live_build/syslinux or live_build/efiboot already exist (e.g. you
+#    committed customized versions), they are left untouched.
+# ---------------------------------------------------------------------------
+if [ -d "${RELENG_DIR}" ]; then
+    for dir in syslinux efiboot; do
+        if [ -d "${RELENG_DIR}/${dir}" ] && [ ! -d "${LIVE_BUILD_DIR}/${dir}" ]; then
+            echo "==> Seeding ${dir}/ from archiso releng reference profile"
+            cp -r "${RELENG_DIR}/${dir}" "${LIVE_BUILD_DIR}/${dir}"
+        fi
+    done
 else
-  warn "No regular user was found. Skipping per-user yay, Flatpak, and theme setup."
+    echo "WARNING: ${RELENG_DIR} not found." >&2
+    echo "         This script expects to run inside the mixosa-builder" >&2
+    echo "         image built from Dockerfile.archiso, where the 'archiso'" >&2
+    echo "         package (and its releng reference configs) is installed." >&2
+    echo "         Without syslinux/ and efiboot/, mkarchiso WILL fail." >&2
 fi
 
-log "Mixosa setup completed. Log out and back in to apply desktop theme changes."
+# ---------------------------------------------------------------------------
+# 2. airootfs overlay - files here get copied verbatim onto the live
+#    filesystem. We use it to enable services by symlinking unit files,
+#    since archiso no longer runs a chroot customization script by default.
+# ---------------------------------------------------------------------------
+mkdir -p "${LIVE_BUILD_DIR}/airootfs/etc/systemd/system/multi-user.target.wants"
+mkdir -p "${LIVE_BUILD_DIR}/airootfs/etc/skel"
+mkdir -p "${LIVE_BUILD_DIR}/airootfs/root"
+
+echo "==> Enabling NetworkManager and sddm in the live image"
+ln -sf /usr/lib/systemd/system/NetworkManager.service \
+    "${LIVE_BUILD_DIR}/airootfs/etc/systemd/system/multi-user.target.wants/NetworkManager.service"
+ln -sf /usr/lib/systemd/system/sddm.service \
+    "${LIVE_BUILD_DIR}/airootfs/etc/systemd/system/display-manager.service"
+
+# ---------------------------------------------------------------------------
+# 3. pacman.conf - referenced by profiledef.sh's pacman_conf= setting.
+#    Enables [multilib] since 'wine' needs 32-bit libraries.
+# ---------------------------------------------------------------------------
+cat > "${LIVE_BUILD_DIR}/pacman.conf" <<'PACMAN_CONF_EOF'
+[options]
+HoldPkg     = pacman glibc
+Architecture = auto
+
+CheckSpace
+SigLevel    = Required DatabaseOptional
+LocalFileSigLevel = Optional
+
+[core]
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+Include = /etc/pacman.d/mirrorlist
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist
+PACMAN_CONF_EOF
+
+# ---------------------------------------------------------------------------
+# 4. profiledef.sh
+# ---------------------------------------------------------------------------
+cat > "${LIVE_BUILD_DIR}/profiledef.sh" <<'PROFILEDEF_EOF'
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+
+iso_name="mixosa"
+iso_label="MIXOSA_$(date +%Y%m)"
+iso_publisher="Mixosa OS <https://github.com/your-org/mixosa-os>"
+iso_application="Mixosa OS Live/Install Medium"
+iso_version="$(date +%Y.%m.%d)"
+install_dir="mixosa"
+buildmodes=('iso')
+
+bootmodes=(
+    'bios.syslinux.mbr'
+    'bios.syslinux.eltorito'
+    'uefi-x64.systemd-boot.esp'
+    'uefi-x64.systemd-boot.eltorito'
+)
+
+arch="x86_64"
+pacman_conf="pacman.conf"
+airootfs_image_type="squashfs"
+airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86' '-b' '1M' '-Xdict-size' '1M')
+
+file_permissions=(
+    ["/etc/shadow"]="0:0:0400"
+    ["/etc/gshadow"]="0:0:0400"
+    ["/root"]="0:0:0750"
+    ["/root/.automated_script.sh"]="0:0:0755"
+    ["/usr/local/bin/choose-mirror"]="0:0:0755"
+    ["/usr/local/bin/livecd-sound"]="0:0:0755"
+)
+PROFILEDEF_EOF
+chmod 755 "${LIVE_BUILD_DIR}/profiledef.sh"
+
+# ---------------------------------------------------------------------------
+# 5. packages.x86_64
+# ---------------------------------------------------------------------------
+cat > "${LIVE_BUILD_DIR}/packages.x86_64" <<'PACKAGES_EOF'
+# --- Base system ---
+base
+linux-zen
+linux-zen-headers
+linux-firmware
+networkmanager
+
+# --- Desktop environment (KDE Plasma) ---
+plasma-desktop
+sddm
+dolphin
+konsole
+
+# --- Audio (PipeWire stack) ---
+pipewire
+pipewire-alsa
+pipewire-pulse
+wireplumber
+
+# --- Theme & tools ---
+whitesur-gtk-theme
+wine
+bottles
+localsend
+git
+nano
+sudo
+PACKAGES_EOF
+
+echo "==> live_build/ is ready:"
+find "${LIVE_BUILD_DIR}" -maxdepth 1 -print
+
+echo "==> Done. Run: mkarchiso -v -w work -o out live_build"
