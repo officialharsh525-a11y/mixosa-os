@@ -1,9 +1,148 @@
 FROM archlinux:latest
 
-ENV LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-RUN pacman -Syu --noconfirm --needed archiso \
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    BUILD_ROOT=/work
+
+# Keep the image deterministic at build time while allowing Arch's rolling
+# repositories to provide the current package versions.
+RUN pacman -Syu --noconfirm --needed \
+      archiso \
+      base-devel \
+      git \
+      rsync \
+      curl \
+      ca-certificates \
+      gnupg \
+      squashfs-tools \
+      dosfstools \
+      mtools \
+      libisoburn \
+      xorriso \
+      grub \
+      efibootmgr \
+      syslinux \
+      linux \
+      linux-firmware \
+      mkinitcpio \
+      mkinitcpio-archiso \
+      systemd \
+      systemd-sysvcompat \
+      wine \
+      wine-mono \
+      wine-gecko \
+      winetricks \
+      steam \
+      protontricks \
+      vulkan-icd-loader \
+      lib32-vulkan-icd-loader \
+      mesa \
+      lib32-mesa \
+      vulkan-radeon \
+      lib32-vulkan-radeon \
+      vulkan-intel \
+      lib32-vulkan-intel \
+      xf86-video-amdgpu \
+      xf86-video-intel \
+      nvidia \
+      nvidia-utils \
+      plasma-meta \
+      kde-applications-meta \
+      xfce4 \
+      xfce4-goodies \
+      hyprland \
+      wayland \
+      xorg-xwayland \
+      qt5-wayland \
+      qt6-wayland \
+      xdg-desktop-portal \
+      xdg-desktop-portal-kde \
+      xdg-desktop-portal-wlr \
+      pipewire \
+      pipewire-audio \
+      pipewire-alsa \
+      pipewire-jack \
+      pipewire-pulse \
+      wireplumber \
+      networkmanager \
+      network-manager-applet \
+      iwd \
+      bluez \
+      bluez-utils \
+      blueman \
+      polkit \
+      power-profiles-daemon \
+      fwupd \
+      smartmontools \
+      btrfs-progs \
+      e2fsprogs \
+      exfatprogs \
+      ntfs-3g \
+      dosfstools \
+      os-prober \
+      nano \
+      vim \
+      bash-completion \
+      man-db \
+      man-pages \
+      python \
+      python-pip \
+      python-psutil \
+      python-rich \
+      jq \
+      htop \
+      fastfetch \
+      openssh \
+      nftables \
+      firewalld \
+      clamav \
+      apparmor \
+      audit \
+      usbguard \
+      flatpak \
+      firefox \
+      konsole \
+      dolphin \
+      ark \
+      spectacle \
+      sddm \
+      cups \
+      cups-pdf \
+      bluez-cups \
+      gutenprint \
+      ttf-dejavu \
+      ttf-liberation \
+      noto-fonts \
+      noto-fonts-emoji \
+      noto-fonts-cjk \
+      mesa-utils \
+      vulkan-tools \
+      gamemode \
+      gamescope \
+      mangohud \
+      && pacman -Scc --noconfirm
+
+# Enable multilib for Steam's 32-bit runtime and install Proton through Steam.
+# Arch distributes Valve Proton as Steam compatibility-tool content rather than
+# a separate core-repository package. protontricks provides Proton integration.
+RUN printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf \
+    && pacman -Syu --noconfirm --needed \
+      steam \
+      wine \
+      lib32-gstreamer \
+      lib32-libpulse \
+      lib32-alsa-plugins \
+      lib32-openal \
+      lib32-gamemode \
+      lib32-mesa \
+      lib32-vulkan-radeon \
+      lib32-vulkan-intel \
     && pacman -Scc --noconfirm
 
-WORKDIR /workspace
+WORKDIR /work
+
+# mkarchiso is intentionally not an entrypoint. The host-side setup script
+# chooses the profile and output paths and invokes it explicitly.
+CMD ["/bin/bash"]

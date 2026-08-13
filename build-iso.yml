@@ -1,0 +1,34 @@
+name: Build Mixosa OS ISO
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-iso:
+    name: Build ArchISO
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build ISO builder image
+        run: docker build --file Dockerfile.archiso --tag mixosa-os-builder:latest .
+
+      - name: Build Mixosa OS ISO
+        run: ./setup.sh
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mixosa-os-iso
+          path: out/*.iso
+          if-no-files-found: error
+          retention-days: 14
