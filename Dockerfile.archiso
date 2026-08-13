@@ -1,21 +1,11 @@
 FROM archlinux:latest
 
-# Refresh keyring first so signature checks on the packages below don't fail
-# on a stale/base image, then update databases and install the build
-# toolchain. No non-root user is created here on purpose: the container
-# runs as root by default, so 'mkarchiso' can be invoked directly without
-# 'sudo' anywhere in the pipeline.
-RUN pacman -Sy --noconfirm --needed archlinux-keyring && \
-    pacman -Syu --noconfirm && \
-    pacman -S --noconfirm --needed \
-        archiso \
-        git \
-        bash \
-        dosfstools \
-        squashfs-tools \
-        libisoburn \
-        mtools \
-        e2fsprogs \
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+RUN pacman -Syu --noconfirm --needed archiso \
     && pacman -Scc --noconfirm
 
 WORKDIR /workspace
+
+ENTRYPOINT ["mkarchiso"]

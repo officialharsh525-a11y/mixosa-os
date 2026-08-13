@@ -1,36 +1,43 @@
-# ---------------------------------------------------------------------------
-# Mixosa OS package list
-# One package name per line. Lines starting with '#' are ignored by mkarchiso.
-# NOTE: whitesur-gtk-theme, bottles and localsend are AUR packages and are
-# NOT available in the official Arch repos used by archiso's default
-# pacman.conf. See the note at the bottom of this file / the setup.sh
-# comments before relying on this list to pull them in unmodified.
-# ---------------------------------------------------------------------------
-
-# --- Base system ---
+# Archiso boot and live-environment requirements
+archiso
 base
-linux-zen
-linux-zen-headers
+linux
 linux-firmware
+mkinitcpio
+mkinitcpio-archiso
+syslinux
+
+# Networking and wireless support
 networkmanager
+network-manager-applet
+wpa_supplicant
+iproute2
+iputils
 
-# --- Desktop environment (KDE Plasma) ---
-plasma-desktop
-sddm
-dolphin
-konsole
+# Xorg and desktop environment
+xorg-server
+xorg-xinit
+mesa
+xfce4
+xfce4-goodies
 
-# --- Audio (PipeWire stack) ---
+# Audio and media services
 pipewire
-pipewire-alsa
 pipewire-pulse
 wireplumber
 
-# --- Theme & tools ---
-whitesur-gtk-theme
-wine
-bottles
-localsend
+# Web browser and everyday utilities
+firefox
+bash
+coreutils
+curl
+wget
 git
+unzip
+zip
+htop
+less
+man-db
+man-pages
 nano
-sudo
+vim
